@@ -203,7 +203,7 @@ public class BubbleLayout  extends BubbleBaseLayout {
     }
 
     protected void getMarginRight() {
-        this.windowManager.getDefaultDisplay().getMetrics(new DisplayMetrics());
+        this.windowManager.getDefaultDisplay().getRealMetrics(new DisplayMetrics());
         Display defaultDisplay = getWindowManager().getDefaultDisplay();
         Point point = new Point();
         defaultDisplay.getSize(point);
@@ -231,7 +231,7 @@ public class BubbleLayout  extends BubbleBaseLayout {
     }
 
     public void getRightMargin() {
-        this.windowManager.getDefaultDisplay().getMetrics(new DisplayMetrics());
+        this.windowManager.getDefaultDisplay().getRealMetrics(new DisplayMetrics());
         Display defaultDisplay = getWindowManager().getDefaultDisplay();
         Point point = new Point();
         defaultDisplay.getSize(point);

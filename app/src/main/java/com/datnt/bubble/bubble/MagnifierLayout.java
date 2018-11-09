@@ -83,7 +83,7 @@ public class MagnifierLayout extends BubbleLayout {
     }
 
     protected void getMarginRight() {
-        windowManager.getDefaultDisplay().getMetrics(new DisplayMetrics());
+        windowManager.getDefaultDisplay().getRealMetrics(new DisplayMetrics());
         Display defaultDisplay = getWindowManager().getDefaultDisplay();
         Point point = new Point();
         defaultDisplay.getSize(point);

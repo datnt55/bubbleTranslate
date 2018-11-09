@@ -32,10 +32,12 @@ import android.util.SparseArray;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.datnt.bubble.bubble.BubbleLayout;
 import com.datnt.bubble.bubble.MagnifierLayout;
+import com.datnt.bubble.bubble.MeaningLayout;
 import com.datnt.bubble.bubble.OnInitializedCallback;
 import com.google.android.gms.vision.Frame;
 import com.google.android.gms.vision.text.Text;
@@ -50,6 +52,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
 import static android.view.View.INVISIBLE;
+import static android.view.View.VISIBLE;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = BubblesService.class.getSimpleName();
@@ -70,8 +73,12 @@ public class MainActivity extends AppCompatActivity {
     private Intent mResultData;
     private static final int REQUEST_MEDIA_PROJECTION = 1;
     private MainActivity mThis;
+    private MeaningLayout mMeaningLayout;
     private boolean capturePicture = false;
     private SparseArray<TextBlock> textBlocks;
+    private boolean hideMeaning = true;
+    private TextView txtWord;
+    private boolean resetCaptureMagnifier = false, resetCaptureMeaning = false;
 
     @Override
     protected void onCreate(Bundle bundle) {
@@ -182,9 +189,14 @@ public class MainActivity extends AppCompatActivity {
         heightScreen = displaymetrics.heightPixels;
         widthScreen = displaymetrics.widthPixels;
         mScreenDensity = displaymetrics.densityDpi;
+        mMeaningLayout = (MeaningLayout) LayoutInflater.from(this).inflate(R.layout.meaning_bubble_layout, null);
+        txtWord = mMeaningLayout.findViewById(R.id.txt_text);
+        mMeaningLayout.setVisibility(INVISIBLE);
+        mMeaningLayout.setOnTouchedListener(new MeaningTouchListener());
         mMagnifierLayout = (MagnifierLayout) LayoutInflater.from(this).inflate(R.layout.bubble_layout, null);
         this.mMagnifierLayout.setShouldStickToWall(false);
         mBubbleManager.addBubble(mMagnifierLayout, (widthScreen / 2) - 90, heightScreen / 3);
+        mBubbleManager.addBubble(mMeaningLayout, (widthScreen / 2) - 90, heightScreen / 3);
         mMagnifierLayout.setOnBubbleRemoveListener(new MagnifierRemoveListener(this));
         mMagnifierLayout.setOnBubbleClickListener(new MagnifierClickListener(this));
         mMagnifierLayout.setOnMagnifierTouchReleasedListener(new MagnifierLayout.MagnifierTouchReleasedListener() {
@@ -214,7 +226,11 @@ public class MainActivity extends AppCompatActivity {
                                 if (element.getBoundingBox().contains(startX, startY)) {
                                     new Handler(Looper.getMainLooper()).post(new Runnable() {
                                         public void run() {
-                                            Toast.makeText(mThis, element.getValue(), Toast.LENGTH_SHORT).show();
+                                            if (mMeaningLayout.getVisibility() != VISIBLE)
+                                                mMeaningLayout.setVisibility(VISIBLE);
+                                            mMeaningLayout.updateMeaningContent(mMagnifierLayout.getCenterX(), mMagnifierLayout.getCenterY(), 100);
+                                            txtWord.setText(element.getValue());
+                                            //Toast.makeText(mThis, element.getValue(), Toast.LENGTH_SHORT).show();
                                         }
                                     });
                                 }
@@ -229,31 +245,46 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
+                resetCaptureMagnifier = false;
             }
 
             @Override
             public void onTouchOutside(MagnifierLayout magnifierLayout, int i, int i2) {
-
+                resetCaptureMagnifier = true;
+                if (resetCaptureMeaning){
+                    textBlocks = null;
+                    capturePicture = false;
+                    hideMeaningView();
+                }
             }
 
             @Override
             public void onBubbleMove(MagnifierLayout magnifierLayout, int i, int i2) {
-//                Log.d("onMagnifierMoved", "deltaX=" + Math.abs(i - startX) + " deltaY=" + Math.abs(i2 - startY));
-//                if (System.currentTimeMillis() - this.mThis.f7630N >= 300) {
-//                    this.mThis.f7655o = i;
-//                    this.mThis.f7656p = i2;
-//                    if (this.mThis.am == 2) {
-//                        mMeaningLayout.m11504a(mMagnifierLayout.getCenterX(), mMagnifierLayout.getCenterY(), this.mThis.f7625I);
-//                    } else if (this.mThis.f7639W == null) {
-//                        mMeaningLayout.m11504a(mMagnifierLayout.getCenterX(), mMagnifierLayout.getCenterY(), this.mThis.f7625I);
-//                    } else if (this.mThis.f7639W != null) {
-//                        try {
-//                            this.mThis.m11265o();
-//                        } catch (Exception e) {
-//                            e.printStackTrace();
-//                        }
-//                    }
-//                }
+                Log.d("onMagnifierMoved", "deltaX=" + Math.abs(i - startX) + " deltaY=" + Math.abs(i2 - startY));
+                startX = i;
+                startY = i2;
+                if (textBlocks == null) {
+                    mMeaningLayout.updateMeaningContent(mMagnifierLayout.getCenterX(), mMagnifierLayout.getCenterY(), 100);
+                } else if (textBlocks != null) {
+                    for (int index = 0; index < textBlocks.size(); index++) {
+                        TextBlock tBlock = textBlocks.valueAt(index);
+                        for (Text line : tBlock.getComponents()) {
+                            for (final Text element : line.getComponents()) {
+                                if (element.getBoundingBox().contains(startX, startY)) {
+                                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                                        public void run() {
+                                            if (mMeaningLayout.getVisibility() != VISIBLE)
+                                                mMeaningLayout.setVisibility(VISIBLE);
+                                            mMeaningLayout.updateMeaningContent(mMagnifierLayout.getCenterX(), mMagnifierLayout.getCenterY(), 100);
+                                            txtWord.setText(element.getValue());
+                                            //Toast.makeText(mThis, element.getValue(), Toast.LENGTH_SHORT).show();
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
             }
         });
         progressBar = mMagnifierLayout.findViewById(R.id.progressLookingUp);
@@ -388,6 +419,32 @@ public class MainActivity extends AppCompatActivity {
         moveTaskToBack(true);
     }
 
+    /* renamed from: quangle.com.bubbledictionary.CaptureScreenActivity$5 */
+    class MeaningTouchListener implements MeaningLayout.MeaningTouchListener {
+        class HideMeaningViewRunnable implements Runnable {
+            public void run() {
+                hideMeaningView();
+            }
+        }
+
+        @Override
+        public void onTouchOutside() {
+            resetCaptureMeaning = true;
+            if (resetCaptureMagnifier) {
+                textBlocks = null;
+                capturePicture = false;
+                runOnUiThread(new HideMeaningViewRunnable());
+            }
+        }
+    }
+
+    private void hideMeaningView() {
+        if (this.mMeaningLayout != null) {
+            this.mMeaningLayout.setVisibility(INVISIBLE);
+        }
+        hideMeaning = true;
+    }
+
     private class CaptureImageAvailable implements ImageReader.OnImageAvailableListener {
         MainActivity f7601a;
 
@@ -504,7 +561,11 @@ public class MainActivity extends AppCompatActivity {
                             if (element.getBoundingBox().contains(startX, startY)) {
                                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                                     public void run() {
-                                        Toast.makeText(mThis, element.getValue(), Toast.LENGTH_SHORT).show();
+                                        if (mMeaningLayout.getVisibility() != VISIBLE)
+                                            mMeaningLayout.setVisibility(VISIBLE);
+                                        mMeaningLayout.updateMeaningContent(mMagnifierLayout.getCenterX(), mMagnifierLayout.getCenterY(), 100);
+                                        txtWord.setText(element.getValue());
+                                        //Toast.makeText(mThis, element.getValue(), Toast.LENGTH_SHORT).show();
                                     }
                                 });
                             }
