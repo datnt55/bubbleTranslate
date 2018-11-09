@@ -5,14 +5,19 @@ import android.app.Activity;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
+import android.graphics.Paint;
 import android.hardware.display.VirtualDisplay;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -23,18 +28,26 @@ import android.provider.Settings;
 import android.support.v7.app.AppCompatActivity;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.util.SparseArray;
 import android.view.LayoutInflater;
+import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import com.datnt.bubble.bubble.BubbleLayout;
 import com.datnt.bubble.bubble.MagnifierLayout;
 import com.datnt.bubble.bubble.OnInitializedCallback;
+import com.google.android.gms.vision.Frame;
+import com.google.android.gms.vision.text.Text;
+import com.google.android.gms.vision.text.TextBlock;
+import com.google.android.gms.vision.text.TextRecognizer;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 
 import static android.view.View.INVISIBLE;
 
@@ -49,18 +62,21 @@ public class MainActivity extends AppCompatActivity {
     private MediaProjection mMediaProjection;
     private Handler handler;
     Handler f7657q = new Handler();
-    private  int heightScreen, widthScreen, mScreenDensity;
-    private VirtualDisplay mVirtualDisplay ;
+    private int heightScreen, widthScreen, mScreenDensity;
+    private VirtualDisplay mVirtualDisplay;
     private static final String STATE_RESULT_CODE = "result_code";
     private static final String STATE_RESULT_DATA = "result_data";
     private int mResultCode;
     private Intent mResultData;
     private static final int REQUEST_MEDIA_PROJECTION = 1;
-
+    private MainActivity mThis;
+    private boolean capturePicture = false;
+    private SparseArray<TextBlock> textBlocks;
 
     @Override
     protected void onCreate(Bundle bundle) {
         super.onCreate(bundle);
+        mThis = this;
         if (bundle != null) {
             mResultCode = bundle.getInt(STATE_RESULT_CODE);
             mResultData = bundle.getParcelable(STATE_RESULT_DATA);
@@ -103,6 +119,7 @@ public class MainActivity extends AppCompatActivity {
             outState.putParcelable(STATE_RESULT_DATA, mResultData);
         }
     }
+
     public final static int REQUEST_CODE = 10101;
 
     public void checkDrawOverlayPermission() {
@@ -120,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 Toast.makeText(this, "Sorry. Can't draw overlays without permission...", Toast.LENGTH_SHORT).show();
             }
-        }else if (requestCode == REQUEST_MEDIA_PROJECTION) {
+        } else if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode != Activity.RESULT_OK) {
                 Log.i(TAG, "User cancelled");
                 //Toast.makeText(getActivity(), R.string.user_cancelled, Toast.LENGTH_SHORT).show();
@@ -156,11 +173,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initComponents() {
-        DisplayMetrics displayMetrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-        heightScreen = displayMetrics.heightPixels;
-        widthScreen = displayMetrics.widthPixels;
-        mScreenDensity = displayMetrics.densityDpi;
+        DisplayMetrics displaymetrics = new DisplayMetrics();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            getWindowManager().getDefaultDisplay().getRealMetrics(displaymetrics);
+        } else {
+            getWindowManager().getDefaultDisplay().getMetrics(displaymetrics);
+        }
+        heightScreen = displaymetrics.heightPixels;
+        widthScreen = displaymetrics.widthPixels;
+        mScreenDensity = displaymetrics.densityDpi;
         mMagnifierLayout = (MagnifierLayout) LayoutInflater.from(this).inflate(R.layout.bubble_layout, null);
         this.mMagnifierLayout.setShouldStickToWall(false);
         mBubbleManager.addBubble(mMagnifierLayout, (widthScreen / 2) - 90, heightScreen / 3);
@@ -177,11 +198,31 @@ public class MainActivity extends AppCompatActivity {
                 Log.d("MagnifierLayout", "coord: " + i + " " + i2);
                 startX = i;
                 startY = i2;
+
+                if (textBlocks == null) {
+                    magnifierLayout.hideAnim();
 //                if (this.mThis.f7639W == null) {
 //                    this.mThis.m11174A();
-                      startCapture();
+                    startCapture();
 //                    return;
 //                }
+                } else {
+                    for (int index = 0; index < textBlocks.size(); index++) {
+                        TextBlock tBlock = textBlocks.valueAt(index);
+                        for (Text line : tBlock.getComponents()) {
+                            for (final Text element : line.getComponents()) {
+                                if (element.getBoundingBox().contains(startX, startY)) {
+                                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                                        public void run() {
+                                            Toast.makeText(mThis, element.getValue(), Toast.LENGTH_SHORT).show();
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                }
                 try {
                     //m11265o();
                     //TODO: handler
@@ -226,7 +267,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void setUpVirtualDisplay() {
         try {
-            imageReader = ImageReader.newInstance(widthScreen, heightScreen, ImageFormat.RGB_565, 2);
+            imageReader = ImageReader.newInstance(widthScreen, heightScreen, 1, 2);
             mVirtualDisplay = mMediaProjection.createVirtualDisplay("screencap", widthScreen, heightScreen, mScreenDensity, 9, this.imageReader.getSurface(), null, handler);
             this.imageReader.setOnImageAvailableListener(new CaptureImageAvailable(this), handler);
         } catch (Exception e) {
@@ -249,6 +290,7 @@ public class MainActivity extends AppCompatActivity {
 
     public class MagnifierRemoveListener implements BubbleLayout.BubbleRemoveListener {
         MainActivity mThis;
+
         MagnifierRemoveListener(MainActivity mThis) {
             this.mThis = mThis;
         }
@@ -261,6 +303,7 @@ public class MainActivity extends AppCompatActivity {
 
     class MagnifierClickListener implements BubbleLayout.BubbleClickListener {
         MainActivity mThis;
+
         class SupperLongClickRunable implements Runnable {
             final MagnifierClickListener f7592a;
 
@@ -354,16 +397,27 @@ public class MainActivity extends AppCompatActivity {
 
         public void onImageAvailable(final ImageReader imageReader) {
             //Toast.makeText(f7601a,"Capture",Toast.LENGTH_SHORT).show();
-//            new Handler(Looper.getMainLooper()).post(new Runnable() {
-//                public void run() {
-//                    progressBar.setVisibility(View.VISIBLE);
-//                }
-//            });
-            Bitmap result = saveToBitmap(imageReader);
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                public void run() {
+                    progressBar.setVisibility(View.VISIBLE);
+                }
+            });
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    if (!capturePicture) {
+                        capturePicture = true;
+                        Bitmap result = saveToBitmap(imageReader);
+                    }
+                }
+            }).start();
+
         }
     }
 
-    private Bitmap saveToBitmap(ImageReader reader){
+    public static final String ROOT_DIRECTORY = Environment.getExternalStoragePublicDirectory("Bubble").getAbsolutePath();
+
+    private Bitmap saveToBitmap(ImageReader reader) {
         Log.i(TAG, "in OnImageAvailable");
         Bitmap bitmap = null;
         Image img = null;
@@ -378,40 +432,107 @@ public class MainActivity extends AppCompatActivity {
                 int height = img.getHeight();
                 int pixelStride = planes[0].getPixelStride();
                 int rowStride = planes[0].getRowStride();
-                int rowPadding = rowStride - pixelStride * width;
-                byte[] newData = new byte[width * height * 4];
-
+//                int rowPadding = rowStride - pixelStride * width;
+//                byte[] newData = new byte[width * height * 4];
+                ByteBuffer buffer = planes[0].getBuffer();
                 int offset = 0;
                 DisplayMetrics displayMetrics = new DisplayMetrics();
-                bitmap = Bitmap.createBitmap(displayMetrics,width, height, Bitmap.Config.RGB_565);
-                ByteBuffer buffer = planes[0].getBuffer();
-                for (int i = 0; i < height; ++i) {
-                    for (int j = 0; j < width; ++j) {
-                        int pixel = 0;
-                        pixel |= (buffer.get(offset) & 0xff) << 16;     // R
-                        pixel |= (buffer.get(offset + 1) & 0xff) << 8;  // G
-                        pixel |= (buffer.get(offset + 2) & 0xff);       // B
-                        pixel |= (buffer.get(offset + 3) & 0xff) << 24; // A
-                        bitmap.setPixel(j, i, pixel);
-                        offset += pixelStride;
-                    }
-                    offset += rowPadding;
-                }
+                bitmap = Bitmap.createBitmap(((planes[0].getRowStride() - (widthScreen * pixelStride)) / pixelStride) + widthScreen, height, Bitmap.Config.ARGB_8888);
+                bitmap.copyPixelsFromBuffer(buffer);
                 img.close();
+//                File file = new File(ROOT_DIRECTORY);
+//                if (!file.exists())
+//                    file.mkdir();
+//                File filename = new File(file,"test.png");
+//                try (FileOutputStream out = new FileOutputStream(filename)) {
+//                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+                detectTextBlock(bitmap);
                 return bitmap;
             }
 
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            if (null != bitmap) {
-                bitmap.recycle();
-            }
-            if (null != img) {
-                img.close();
-            }
+//            if (null != bitmap) {
+//                bitmap.recycle();
+//            }
+//            if (null != img) {
+//                img.close();
+//            }
 
         }
         return null;
+    }
+
+    private void detectTextBlock(final Bitmap bitmap) {
+        if (textBlocks != null)
+            return;
+        final Canvas canvas = new Canvas(bitmap);
+        final Paint p = new Paint();
+        p.setStyle(Paint.Style.FILL_AND_STROKE);
+        p.setAntiAlias(true);
+        p.setFilterBitmap(true);
+        p.setDither(true);
+        p.setColor(Color.RED);
+        ArrayList<String> arrayList = new ArrayList<>();
+        TextRecognizer detector = new TextRecognizer.Builder(this).build();
+        try {
+            if (detector.isOperational() && bitmap != null) {
+                Frame frame = new Frame.Builder().setBitmap(bitmap).build();
+                textBlocks = detector.detect(frame);
+                for (int index = 0; index < textBlocks.size(); index++) {
+                    TextBlock tBlock = textBlocks.valueAt(index);
+                    for (Text line : tBlock.getComponents()) {
+                        for (final Text element : line.getComponents()) {
+                            arrayList.add(element.getValue());
+//                            new Handler(Looper.getMainLooper()).post(new Runnable() {
+//                                public void run() {
+//                                    final Paint paint = new Paint();
+//                                    paint.setStyle(Paint.Style.FILL_AND_STROKE);
+//                                    paint.setAntiAlias(true);
+//                                    paint.setFilterBitmap(true);
+//                                    paint.setDither(true);
+//                                    paint.setColor(Color.YELLOW);
+//                                    canvas.drawRect(element.getBoundingBox(), p);
+//                                    canvas.drawText(element.getValue(),element.getBoundingBox().left,element.getBoundingBox().centerY(),paint);
+//                                    canvas.drawText(element.getBoundingBox().toString(),element.getBoundingBox().left,element.getBoundingBox().bottom,paint);
+//                                }
+//                            });
+                            if (element.getBoundingBox().contains(startX, startY)) {
+                                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                                    public void run() {
+                                        Toast.makeText(mThis, element.getValue(), Toast.LENGTH_SHORT).show();
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    public void run() {
+//                        File file = new File(ROOT_DIRECTORY);
+//                        if (!file.exists())
+//                            file.mkdir();
+//                        File filename = new File(file, "test.png");
+//                        try (FileOutputStream out = new FileOutputStream(filename)) {
+//                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+//                        } catch (IOException e) {
+//                            e.printStackTrace();
+//                        }
+                        progressBar.setVisibility(View.GONE);
+                    }
+                });
+                int a = 1;
+            } else {
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "Failed to load Image", Toast.LENGTH_SHORT)
+                    .show();
+            Log.e(TAG, e.toString());
+        }
+
     }
 }

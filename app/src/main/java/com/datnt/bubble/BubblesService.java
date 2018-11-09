@@ -109,7 +109,7 @@ public class BubblesService extends Service{
                     type, 
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                     PixelFormat.TRANSPARENT);
-        layoutParams.gravity = Gravity.LEFT;
+        layoutParams.gravity = Gravity.START|Gravity.TOP;
         layoutParams.x = i;
         layoutParams.y = i2;
         return layoutParams;

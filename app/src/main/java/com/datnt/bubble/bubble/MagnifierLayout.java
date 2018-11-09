@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Point;
 import android.os.CountDownTimer;
+import android.os.Handler;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -69,6 +70,16 @@ public class MagnifierLayout extends BubbleLayout {
 
     public void setCenterY(int i) {
         this.centerY = i;
+    }
+
+    public void  hideAnim(){
+        setVisibility(INVISIBLE);
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                setVisibility(VISIBLE);
+            }
+        },1000);
     }
 
     protected void getMarginRight() {
@@ -154,6 +165,7 @@ public class MagnifierLayout extends BubbleLayout {
                             int width = getWidth();
                             Log.e(TAG, "Bubble Width=" + width);
                             isRelease = true;
+                            int a = getViewParams().y;
                             this.centerX = getViewParams().x + (width / 2);
                             this.centerY = (width / 2) + getViewParams().y;
                             this.listener.onTouchBubble(this, this.centerX, this.centerY);
@@ -174,6 +186,7 @@ public class MagnifierLayout extends BubbleLayout {
 //                    }
                     int width = getWidth();
                     this.centerX = getViewParams().x + (width / 2);
+                    int a = getViewParams().y;
                     this.centerY = (width / 2) + getViewParams().y;
                     this.listener.onBubbleMove(this, this.centerX, this.centerY);
                     if (getScreenOrientation() != this.screenOrientation) {
